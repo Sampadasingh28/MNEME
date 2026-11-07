@@ -123,3 +123,4 @@ export default function CaseCard({ caseItem, onBookmarkToggle, isBookmarked }) {
     </div>
   );
 }
+

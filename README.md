@@ -178,3 +178,4 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 Built for the **Great Indian AI Internship Challenge by Gnani.ai**.  
 Engineered with precision for human cognitive preservation.
+

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   PlusCircle, 
@@ -12,17 +12,20 @@ import {
   Lock, 
   Info,
   Clock,
-  Sparkles
+  Sparkles,
+  Volume2,
+  VolumeX,
+  Radio
 } from 'lucide-react';
 import { UNIVERSES } from '../data/universesData';
 import { storageService } from '../services/storageService';
 import { gnaniService } from '../services/gnaniService';
 
 export default function ExperienceCreator() {
-  const [step, setStep] = useState(1);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordedNotes, setRecordedNotes] = useState('');
+  const [activeDictatingField, setActiveDictatingField] = useState(null);
+  const [isSpeakingReview, setIsSpeakingReview] = useState(false);
   const [submittedResult, setSubmittedResult] = useState(null);
+  const [gnaniStatus, setGnaniStatus] = useState({ isLive: false, mode: 'SIMULATED_DEMO_MODE' });
 
   // Form State
   const [formData, setFormData] = useState({
@@ -41,30 +44,53 @@ export default function ExperienceCreator() {
     lessonsLearned: ''
   });
 
+  useEffect(() => {
+    gnaniService.checkGnaniBackendStatus().then(st => {
+      if (st) setGnaniStatus(st);
+    });
+  }, []);
+
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  // Voice recording support
-  const handleToggleVoice = () => {
-    if (isRecording) {
+  // Field-specific voice dictation with Gnani Prisma STT
+  const handleToggleDictation = (field) => {
+    if (activeDictatingField === field) {
       gnaniService.stopSpeechRecognition();
-      setIsRecording(false);
+      setActiveDictatingField(null);
     } else {
-      setIsRecording(true);
+      gnaniService.stopSpeechRecognition();
+      setActiveDictatingField(field);
+      gnaniService.playAudioFeedback('click');
+
       gnaniService.startSpeechRecognition({
         onResult: (transcript) => {
-          setRecordedNotes(transcript);
-          // Auto-append to description
           setFormData(prev => ({
             ...prev,
-            description: prev.description ? `${prev.description} ${transcript}` : transcript
+            [field]: prev[field] ? `${prev[field]} ${transcript}` : transcript
           }));
         },
-        onError: () => setIsRecording(false),
-        onEnd: () => setIsRecording(false)
+        onError: () => setActiveDictatingField(null),
+        onEnd: () => setActiveDictatingField(null)
       });
     }
+  };
+
+  // Listen back to drafted experience with Gnani Timbre TTS
+  const handleListenBack = () => {
+    if (isSpeakingReview) {
+      gnaniService.stopSpeaking();
+      setIsSpeakingReview(false);
+      return;
+    }
+
+    const reviewScript = `Case submission draft: ${formData.title || 'Untitled Incident'}. Domain: ${formData.domain}. Incident narrative: ${formData.description || 'No description entered.'} Clues noticed: ${formData.cluesNoticed || 'None specified.'} Lessons learned: ${formData.lessonsLearned || 'None specified.'}`;
+    
+    setIsSpeakingReview(true);
+    gnaniService.speakCaseInvestigation(reviewScript).finally(() => {
+      setIsSpeakingReview(false);
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -74,10 +100,11 @@ export default function ExperienceCreator() {
       return;
     }
 
+    gnaniService.stopSpeechRecognition();
+    gnaniService.stopSpeaking();
     gnaniService.playAudioFeedback('lock');
 
     try {
-      // 1. Send to server endpoint
       const response = await fetch('/api/submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -93,9 +120,7 @@ export default function ExperienceCreator() {
         };
       }
 
-      // Also persist to local storage
       storageService.saveExperienceSubmission(formData);
-
       setSubmittedResult(resData.submission);
       gnaniService.playAudioFeedback('success');
     } catch {
@@ -188,15 +213,23 @@ export default function ExperienceCreator() {
       
       {/* Header */}
       <div className="mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-950/40 border border-purple-500/30 text-[11px] font-mono text-purple-300 mb-2">
-          <PlusCircle className="w-3.5 h-3.5" />
-          <span>EXPERIENCE CREATOR STUDIO</span>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-950/40 border border-purple-500/30 text-[11px] font-mono text-purple-300">
+            <PlusCircle className="w-3.5 h-3.5" />
+            <span>EXPERIENCE CREATOR STUDIO</span>
+          </div>
+
+          <div className="px-2.5 py-1 rounded-full bg-white/[0.03] border border-white/10 text-[10px] font-mono text-purple-300 flex items-center gap-1.5">
+            <Radio className="w-3 h-3 text-purple-400 animate-pulse" />
+            <span>Gnani Voice Recording: {gnaniStatus.isLive ? 'LIVE' : 'DEMO MODE'}</span>
+          </div>
         </div>
+
         <h1 className="font-serif text-3xl sm:text-4xl font-extrabold text-white">
           Contribute Your Experience
         </h1>
         <p className="text-xs sm:text-sm text-slate-400 font-light mt-1 max-w-2xl">
-          Preserve the instincts, missed clues, and critical decisions of your professional career. Submissions undergo expert de-identification before community archiving.
+          Preserve the instincts, missed clues, and critical decisions of your professional career. You can dictate any field using speech-to-text, edit text freely, and listen back before submission.
         </p>
       </div>
 
@@ -206,9 +239,23 @@ export default function ExperienceCreator() {
         {/* Row 1: Title & Domain */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-mono text-slate-300 mb-1.5">
-              Incident / Case Title *
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-mono text-slate-300">
+                Incident / Case Title *
+              </label>
+              <button
+                type="button"
+                onClick={() => handleToggleDictation('title')}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono transition-all ${
+                  activeDictatingField === 'title' 
+                    ? 'bg-rose-500 text-white animate-pulse'
+                    : 'bg-purple-950/40 text-purple-300 border border-purple-500/30'
+                }`}
+              >
+                {activeDictatingField === 'title' ? <MicOff className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
+                <span>{activeDictatingField === 'title' ? 'Recording...' : 'Dictate'}</span>
+              </button>
+            </div>
             <input
               type="text"
               required
@@ -284,18 +331,17 @@ export default function ExperienceCreator() {
               The Incident Narrative & Initial Context *
             </label>
             
-            {/* Voice dictate button */}
             <button
               type="button"
-              onClick={handleToggleVoice}
+              onClick={() => handleToggleDictation('description')}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono transition-all ${
-                isRecording 
+                activeDictatingField === 'description' 
                   ? 'bg-rose-500 text-white animate-pulse'
                   : 'bg-purple-950/40 text-purple-300 hover:text-white border border-purple-500/30'
               }`}
             >
-              {isRecording ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-              <span>{isRecording ? 'Recording...' : 'Dictate by Voice'}</span>
+              {activeDictatingField === 'description' ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+              <span>{activeDictatingField === 'description' ? 'Recording Speech...' : 'Dictate by Voice'}</span>
             </button>
           </div>
 
@@ -304,7 +350,7 @@ export default function ExperienceCreator() {
             rows={4}
             value={formData.description}
             onChange={(e) => handleChange('description', e.target.value)}
-            placeholder="Describe the operational setting, what went wrong, and what immediate warning signs surfaced..."
+            placeholder="Describe the operational setting, what went wrong, and what immediate warning signs surfaced (or tap Dictate by Voice to speak)..."
             className="w-full p-3.5 rounded-xl bg-white/[0.03] border border-white/10 text-xs text-white focus:outline-none focus:border-mneme-accent font-sans leading-relaxed"
           />
         </div>
@@ -312,9 +358,20 @@ export default function ExperienceCreator() {
         {/* Forensic Core: Clues Noticed & Decisions Considered */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-mono text-slate-300 mb-1.5">
-              Clues & Subtle Warning Signs Noticed
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-mono text-slate-300">
+                Clues & Subtle Warning Signs
+              </label>
+              <button
+                type="button"
+                onClick={() => handleToggleDictation('cluesNoticed')}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono ${
+                  activeDictatingField === 'cluesNoticed' ? 'bg-rose-500 text-white animate-pulse' : 'bg-purple-950/40 text-purple-300 border border-purple-500/30'
+                }`}
+              >
+                <Mic className="w-3 h-3" /> Dictate
+              </button>
+            </div>
             <textarea
               rows={3}
               value={formData.cluesNoticed}
@@ -325,9 +382,20 @@ export default function ExperienceCreator() {
           </div>
 
           <div>
-            <label className="block text-xs font-mono text-slate-300 mb-1.5">
-              Alternative Options Considered & Rejected
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-mono text-slate-300">
+                Rejected Options Considered
+              </label>
+              <button
+                type="button"
+                onClick={() => handleToggleDictation('decisionsConsidered')}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono ${
+                  activeDictatingField === 'decisionsConsidered' ? 'bg-rose-500 text-white animate-pulse' : 'bg-purple-950/40 text-purple-300 border border-purple-500/30'
+                }`}
+              >
+                <Mic className="w-3 h-3" /> Dictate
+              </button>
+            </div>
             <textarea
               rows={3}
               value={formData.decisionsConsidered}
@@ -341,9 +409,20 @@ export default function ExperienceCreator() {
         {/* Final Decision & Lessons Learned */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-mono text-slate-300 mb-1.5">
-              Final Decision Taken & Actual Outcome
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-mono text-slate-300">
+                Final Decision & Actual Outcome
+              </label>
+              <button
+                type="button"
+                onClick={() => handleToggleDictation('finalDecisionTaken')}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono ${
+                  activeDictatingField === 'finalDecisionTaken' ? 'bg-rose-500 text-white animate-pulse' : 'bg-purple-950/40 text-purple-300 border border-purple-500/30'
+                }`}
+              >
+                <Mic className="w-3 h-3" /> Dictate
+              </button>
+            </div>
             <textarea
               rows={3}
               value={formData.finalDecisionTaken}
@@ -354,9 +433,20 @@ export default function ExperienceCreator() {
           </div>
 
           <div>
-            <label className="block text-xs font-mono text-slate-300 mb-1.5">
-              Mistakes, Regrets & Permanent Lessons
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-mono text-slate-300">
+                Lessons & Permanent Instincts
+              </label>
+              <button
+                type="button"
+                onClick={() => handleToggleDictation('lessonsLearned')}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono ${
+                  activeDictatingField === 'lessonsLearned' ? 'bg-rose-500 text-white animate-pulse' : 'bg-purple-950/40 text-purple-300 border border-purple-500/30'
+                }`}
+              >
+                <Mic className="w-3 h-3" /> Dictate
+              </button>
+            </div>
             <textarea
               rows={3}
               value={formData.lessonsLearned}
@@ -365,6 +455,26 @@ export default function ExperienceCreator() {
               className="w-full p-3 rounded-xl bg-white/[0.03] border border-white/10 text-xs text-white focus:outline-none focus:border-mneme-accent font-sans"
             />
           </div>
+        </div>
+
+        {/* Audio Review Utility: Listen back to drafted experience */}
+        <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/10 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Volume2 className="w-4 h-4 text-purple-400" />
+            <div className="text-xs">
+              <span className="font-bold text-white block">Audit Spoken Audio Preview</span>
+              <span className="text-[11px] text-slate-400">Hear your drafted incident read aloud by Gnani Timbre voice.</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleListenBack}
+            className="px-3.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-xs font-mono text-purple-300 border border-purple-500/30 flex items-center gap-1.5 transition-colors"
+          >
+            {isSpeakingReview ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5" />}
+            <span>{isSpeakingReview ? 'Stop Audio' : 'Play Draft Preview'}</span>
+          </button>
         </div>
 
         {/* Consent and Verification Agreement */}

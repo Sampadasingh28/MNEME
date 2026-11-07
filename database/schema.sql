@@ -195,3 +195,4 @@ ALTER TABLE experience_submissions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Public cases read access" ON cases FOR SELECT USING (true);
 CREATE POLICY "Public universes read access" ON universes FOR SELECT USING (true);
+

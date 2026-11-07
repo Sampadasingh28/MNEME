@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
   Play, 
@@ -13,15 +13,32 @@ import {
   HelpCircle,
   ExternalLink,
   ChevronRight,
-  Layers
+  Layers,
+  Headphones
 } from 'lucide-react';
 import { getCaseById, getStatusBadge } from '../data/casesData';
 import { gnaniService } from '../services/gnaniService';
+import { documentaryNarrator } from '../services/documentaryNarrator';
+import VoicePlayer from '../components/VoicePlayer';
 
 export default function CaseDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
   const caseItem = getCaseById(id);
+
+  const [narratorState, setNarratorState] = useState(documentaryNarrator.getState());
+
+  useEffect(() => {
+    if (caseItem) {
+      const script = documentaryNarrator.generateCaseBriefingScript(caseItem);
+      documentaryNarrator.loadScript(script);
+    }
+    const unsubscribe = documentaryNarrator.subscribe((st) => setNarratorState(st));
+    return () => {
+      unsubscribe();
+      documentaryNarrator.stop();
+    };
+  }, [caseItem?.id]);
 
   if (!caseItem) {
     return (
@@ -40,9 +57,13 @@ export default function CaseDetails() {
   const badge = getStatusBadge(caseItem.status);
 
   const handleStart = () => {
+    documentaryNarrator.stop();
     gnaniService.playAudioFeedback('lock');
     navigate(`/investigate/${caseItem.id}`);
   };
+
+  const isNarrating = narratorState.isPlaying;
+  const activeTarget = narratorState.currentSegment?.highlightTarget;
 
   return (
     <div className="min-h-screen pt-28 pb-24 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
@@ -56,8 +77,24 @@ export default function CaseDetails() {
         <span className="text-mneme-lavender font-semibold">{caseItem.title}</span>
       </div>
 
-      {/* Main Dossier Header */}
-      <div className="relative rounded-2xl bg-white/[0.02] border border-white/10 p-6 sm:p-8 backdrop-blur-xl mb-8">
+      {/* Voice Player Banner (Top of Case) */}
+      <div className="mb-6">
+        <VoicePlayer title={`Documentary Briefing: ${caseItem.title}`} />
+      </div>
+
+      {/* Main Dossier Header with Real-Time Audio Highlights */}
+      <div className={`relative rounded-2xl bg-white/[0.02] border p-6 sm:p-8 backdrop-blur-xl mb-8 transition-all duration-300 ${
+        isNarrating && (activeTarget === 'title' || activeTarget === 'summary')
+          ? 'border-purple-500/80 shadow-2xl shadow-purple-950/40 bg-purple-950/10'
+          : 'border-white/10'
+      }`}>
+        
+        {isNarrating && activeTarget === 'title' && (
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono text-[10px] mb-3 animate-pulse">
+            <span>● Narrator Speaking Cold Open</span>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <span className="text-[11px] font-mono uppercase tracking-widest text-mneme-muted px-2.5 py-1 rounded bg-white/[0.04] border border-white/5">
             {caseItem.domain}
@@ -70,7 +107,9 @@ export default function CaseDetails() {
           </div>
         </div>
 
-        <h1 className="font-serif text-3xl sm:text-5xl font-extrabold text-white tracking-tight mb-2">
+        <h1 className={`font-serif text-3xl sm:text-5xl font-extrabold tracking-tight mb-2 transition-colors duration-300 ${
+          isNarrating && activeTarget === 'title' ? 'text-transparent bg-clip-text bg-gradient-to-r from-white via-mneme-lavender to-purple-300' : 'text-white'
+        }`}>
           {caseItem.title}
         </h1>
 
@@ -78,7 +117,15 @@ export default function CaseDetails() {
           {caseItem.subtitle || caseItem.location}
         </p>
 
-        <p className="text-sm text-slate-300 leading-relaxed max-w-3xl font-light mb-8">
+        {isNarrating && activeTarget === 'summary' && (
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono text-[10px] mb-2 animate-pulse">
+            <span>● Narrating Incident Scenario</span>
+          </div>
+        )}
+
+        <p className={`text-sm leading-relaxed max-w-3xl font-light mb-8 transition-colors duration-300 ${
+          isNarrating && activeTarget === 'summary' ? 'text-white font-normal' : 'text-slate-300'
+        }`}>
           {caseItem.summary}
         </p>
 
@@ -149,9 +196,13 @@ export default function CaseDetails() {
         </div>
       </div>
 
-      {/* Role & Objective Box */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div className="p-5 rounded-xl bg-white/[0.02] border border-white/10">
+      {/* Role & Objective Box with Audio Highlight */}
+      <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 transition-all duration-300 ${
+        isNarrating && activeTarget === 'persona' ? 'p-1 rounded-2xl bg-purple-500/20' : ''
+      }`}>
+        <div className={`p-5 rounded-xl border transition-all ${
+          isNarrating && activeTarget === 'persona' ? 'bg-purple-950/40 border-purple-500/80' : 'bg-white/[0.02] border-white/10'
+        }`}>
           <span className="text-[10px] font-mono uppercase text-mneme-accent block mb-1">Assigned Investigator Persona</span>
           <h3 className="font-serif text-base font-bold text-white mb-2">{caseItem.investigatorRole}</h3>
           <p className="text-xs text-slate-400 leading-relaxed font-light">
@@ -159,7 +210,9 @@ export default function CaseDetails() {
           </p>
         </div>
 
-        <div className="p-5 rounded-xl bg-white/[0.02] border border-white/10">
+        <div className={`p-5 rounded-xl border transition-all ${
+          isNarrating && activeTarget === 'persona' ? 'bg-purple-950/40 border-purple-500/80' : 'bg-white/[0.02] border-white/10'
+        }`}>
           <span className="text-[10px] font-mono uppercase text-emerald-400 block mb-1">Primary Operational Objective</span>
           <h3 className="font-serif text-base font-bold text-white mb-2">Tactical Mission Directive</h3>
           <p className="text-xs text-slate-400 leading-relaxed font-light">

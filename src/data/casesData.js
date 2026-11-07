@@ -403,6 +403,135 @@ export const CASES = [
         expertActionTaken: 'opt-dig-1a',
         expertReasoning: 'Premature mass disconnection tips off sophisticated threat actors (APT), who routinely deploy wiper malware if cut off abruptly. Controlled isolation allowed the defenders to trap the adversary memory space and recover the C2 IP list.',
         historicalEventUnlocked: 'The adversary fell for the honey-SPN trap, attempting to authenticate to an isolated sinkhole at 02:29 AM.'
+      },
+      {
+        stageNumber: 2,
+        stageName: 'LATERAL PIVOT & DOMAIN CONTROLLER DC-01 SIEGE',
+        timestamp: '02:41 AM',
+        systemStatus: 'Orange Alert (Privilege Escalation)',
+        context: 'At 02:41 AM, the honey-SPN trap triggers an immediate telemetry hit. However, before the network tap isolates WS-FIN-0892 completely, the adversary initiates lateral movement to primary Domain Controller DC-01 using pass-the-hash via SMB Port 445.',
+        dilemma: 'The adversary has acquired local administrator rights on DC-01. They are attempting to invoke the DCSync attack (GetNCChanges) to dump the NTDS.dit database containing all enterprise hashes.',
+        evidenceList: [
+          {
+            id: 'ev-dig-3',
+            title: 'Directory Service Replication RPC Stream (Port 135/445)',
+            type: 'log',
+            category: 'Network Forensics',
+            value: 'DSGetNCChanges request initiated from non-domain controller IP address 10.14.8.42',
+            significance: 'Smoking gun: Non-domain controller executing directory replication indicates an active DCSync attack in progress.',
+            isClue: true,
+            discovered: false
+          },
+          {
+            id: 'ev-dig-4',
+            title: 'Active Directory Admin Count Property Audit',
+            type: 'document',
+            category: 'Directory Security',
+            value: 'AdminCount attribute toggled to 1 on service account svc_backup_engine at 02:39 AM.',
+            significance: 'Adversary modified SDProp access control to persist domain dominance even if original user account is revoked.',
+            isClue: true,
+            discovered: false
+          }
+        ],
+        decisionPrompt: 'Adversary is executing DCSync on DC-01. What is your containment directive?',
+        decisionOptions: [
+          {
+            id: 'opt-dig-2a',
+            label: 'Execute Double KRBTGT Password Reset & Demote DC-01',
+            description: 'Invalidate all existing Kerberos tickets across the global forest twice with a 10-minute spacing to purge golden tickets, while demoting DC-01 from replication topology.',
+            riskScore: 'Engineered Privilege Annihilation'
+          },
+          {
+            id: 'opt-dig-2b',
+            label: 'Restart DC-01 in Safe Mode & Hope Memory Clears',
+            description: 'Trigger remote reboot of DC-01. Fast, but loses volatile memory forensic artifacts and does not invalidate forged golden tickets.',
+            riskScore: 'High Risk / Tactical Failure'
+          }
+        ],
+        expertActionTaken: 'opt-dig-2a',
+        expertReasoning: 'A reboot does not purge forged Kerberos golden tickets because the KRBTGT hash remains valid in Active Directory. The double KRBTGT password rotation completely invalidated the adversary golden tickets and locked them out permanently.',
+        historicalEventUnlocked: 'At 02:55 AM, the double KRBTGT reset severed all forged adversary session tickets. The intrusion was neutralized without data loss.'
+      },
+      {
+        stageNumber: 3,
+        stageName: 'FORENSIC REMEDIATION & EXFILTRATION AUDIT',
+        timestamp: '03:30 AM',
+        systemStatus: 'Contained & Stabilized (Post-Incident)',
+        context: 'The network perimeter is secured. Threat intelligence analysts extract memory artifacts from the isolated sandbox to verify whether customer financial records were exfiltrated before containment.',
+        dilemma: 'Regulatory authorities require formal declaration within 72 hours under GDPR and FINMA mandates. Management must confirm whether to declare a catastrophic breach or a neutralized near-miss.',
+        evidenceList: [
+          {
+            id: 'ev-dig-5',
+            title: 'NetFlow Outbound Egress Packet Analysis',
+            type: 'log',
+            category: 'Firewall Telemetry',
+            value: 'Total outbound encrypted egress during attack window: 842 KB (command & control heartbeat only). Zero GB bulk data dumps.',
+            significance: 'Definitive confirmation: Containment occurred before the adversary could stage or exfiltrate the 40GB SWIFT transaction database.',
+            isClue: true,
+            discovered: false
+          }
+        ],
+        decisionPrompt: 'Final Regulatory & Forensic Filing: What is your audit declaration?',
+        decisionOptions: [
+          {
+            id: 'opt-dig-3a',
+            label: 'Certify Neutralized Near-Miss with Full Forensic Memory Evidence',
+            description: 'Submit verified telemetry and packet captures proving zero exfiltration occurred, while implementing mandatory FIDO2 hardware tokens.',
+            riskScore: 'Transparent Regulatory Compliance'
+          },
+          {
+            id: 'opt-dig-3b',
+            label: 'Cover Up the Intrusion Citing Internal Firewall Maintenance',
+            description: 'Avoid regulatory scrutiny by classifying the event as routine IT maintenance.',
+            riskScore: 'Extreme Criminal & Regulatory Liability'
+          }
+        ],
+        expertActionTaken: 'opt-dig-3a',
+        expertReasoning: 'Regulators reward rapid containment backed by tamper-evident forensic NetFlow records. Concealing an incident invites devastating regulatory fines and executive prosecution.',
+        historicalEventUnlocked: 'FINMA auditors commended the rapid containment. The clearinghouse preserved its banking operating charter.'
+      }
+    ],
+
+    // Evidence Passport
+    evidencePassport: {
+      source: 'Fintech Threat Intelligence Benchmark #DF-02',
+      sourceType: 'Synthetic High-Fidelity Simulation',
+      verifiedBy: 'MNEME Cybersecurity Incident Working Group',
+      lastReviewed: '2024-11-02',
+      confidenceRating: 'High Fidelity (Simulated)',
+      publicDisclosure: 'Modeled after real-world Kerberoasting attacks documented in banking CERT incident post-mortems.',
+      chainOfCustody: 'Derived from MITRE ATT&CK T1558.003 telemetry benchmarks and Active Directory forensic response playbooks.'
+    },
+
+    // Multiverse Branches
+    multiverseBranches: [
+      {
+        id: 'branch-dig-1',
+        choicePoint: 'Decision 1 (02:14 AM) — If Investigator Chose Option B (Immediate Mass Fiber Pull)',
+        scenarioLabel: 'SIMULATED SCENARIO',
+        title: 'The Dead-Man Ransomware Trigger',
+        probability: '88% likelihood under APT playbook modeling',
+        outcomeSummary: 'The adversary automated dead-man script detects sudden connection loss to the C2 server. A dormant wiper script executes locally on WS-FIN-0892 and adjacent file servers, encrypting 14,000 backup records and costing $18.4M in recovery operations.',
+        impactMetrics: {
+          cost: '-$18,400,000',
+          safety: 'Zero Physical Risk',
+          downtime: '14 Days',
+          reputation: 'Severe Brand & Regulatory Damage'
+        }
+      },
+      {
+        id: 'branch-dig-2',
+        choicePoint: 'Decision 2 (02:41 AM) — If Investigator Chose Option B (Safe Mode Reboot Only)',
+        scenarioLabel: 'SIMULATED SCENARIO',
+        title: 'The Golden Ticket Shadow Reign',
+        probability: '94% likelihood',
+        outcomeSummary: 'Because the KRBTGT hash was not rotated, the adversary used their forged Golden Ticket to re-authenticate 4 hours later from a secondary foothold, successfully transferring $4.2M in fraudulent SWIFT transactions.',
+        impactMetrics: {
+          cost: '-$4,200,000',
+          safety: 'Zero Physical Risk',
+          downtime: '5 Days',
+          reputation: 'Critical Regulatory Sanctions'
+        }
       }
     ]
   },
@@ -1363,3 +1492,4 @@ export function getStatusBadge(status) {
       };
   }
 }
+

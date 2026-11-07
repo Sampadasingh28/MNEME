@@ -18,11 +18,15 @@ import {
   HelpCircle,
   Activity,
   Layers,
-  Award
+  Award,
+  Headphones
 } from 'lucide-react';
 import { getCaseById, getStatusBadge } from '../data/casesData';
 import { gnaniService } from '../services/gnaniService';
 import { storageService } from '../services/storageService';
+import { documentaryNarrator } from '../services/documentaryNarrator';
+import VoicePlayer from '../components/VoicePlayer';
+import InvestigationVoiceAssistant from '../components/InvestigationVoiceAssistant';
 
 export default function Investigation() {
   const { id } = useParams();
@@ -56,6 +60,17 @@ export default function Investigation() {
   // Selected evidence item currently opened in modal/inspection drawer
   const [inspectingEvidence, setInspectingEvidence] = useState(null);
 
+  // Documentary Narrator State for real-time highlighting
+  const [narratorState, setNarratorState] = useState(documentaryNarrator.getState());
+
+  useEffect(() => {
+    const unsubscribe = documentaryNarrator.subscribe((st) => setNarratorState(st));
+    return () => {
+      unsubscribe();
+      documentaryNarrator.stop();
+    };
+  }, []);
+
   // Load saved session or initialize
   useEffect(() => {
     const saved = storageService.getInvestigationProgress(caseItem.id);
@@ -70,6 +85,31 @@ export default function Investigation() {
 
   // Current stage data
   const currentStage = stages[currentStageIdx] || stages[0];
+
+  // Strictly integrate voice narration with Knowledge Lock:
+  // When stage changes or investigation loads, load the narration script for current stage ONLY.
+  // NEVER include future locked stages.
+  useEffect(() => {
+    if (!isCompleted && currentStage) {
+      const script = documentaryNarrator.generateStageScript(currentStage, currentStageIdx + 1, totalStages);
+      documentaryNarrator.loadScript(script);
+    }
+  }, [currentStageIdx, isCompleted, caseItem.id]);
+
+  // When completed, load the learning report script!
+  useEffect(() => {
+    if (isCompleted) {
+      let expertMatches = 0;
+      Object.values(decisions).forEach(d => {
+        if (d.isExpertMatch) expertMatches++;
+      });
+      const totalClues = stages.reduce((acc, st) => acc + (st.evidenceList?.filter(e => e.isClue).length || 0), 0);
+      const foundCluesCount = Object.keys(discoveredClues).length;
+      const alignmentPct = Math.round((expertMatches / totalStages) * 100) || 75;
+      const reportScript = documentaryNarrator.generateLearningReportScript(caseItem, alignmentPct, foundCluesCount, totalClues);
+      documentaryNarrator.loadScript(reportScript);
+    }
+  }, [isCompleted]);
 
   // Inspect evidence item & mark clue as discovered
   const handleInspectEvidence = (evidence) => {
@@ -95,6 +135,7 @@ export default function Investigation() {
   const handleLockDecision = () => {
     if (!draftOption) return;
 
+    documentaryNarrator.stop();
     gnaniService.playAudioFeedback('lock');
 
     const stageDecision = {
@@ -129,6 +170,7 @@ export default function Investigation() {
 
   // Advance to next unlocked stage or finish
   const handleNextStage = () => {
+    documentaryNarrator.stop();
     gnaniService.playAudioFeedback('click');
 
     if (currentStageIdx + 1 < totalStages) {
@@ -183,6 +225,7 @@ export default function Investigation() {
 
   // Reset / Restart investigation
   const handleRestart = () => {
+    documentaryNarrator.stop();
     gnaniService.playAudioFeedback('click');
     if (window.confirm('Reset this investigation? Your locked decisions for this session will be cleared.')) {
       setCurrentStageIdx(0);
@@ -197,6 +240,8 @@ export default function Investigation() {
   };
 
   const badge = getStatusBadge(caseItem.status);
+  const isNarrating = narratorState.isPlaying;
+  const activeTarget = narratorState.currentSegment?.highlightTarget;
 
   // If already completed, show comprehensive Learning Report
   if (isCompleted) {
@@ -211,6 +256,11 @@ export default function Investigation() {
     return (
       <div className="min-h-screen pt-28 pb-24 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
         
+        {/* Voice Player at top of Learning Report */}
+        <div className="mb-6">
+          <VoicePlayer title="Documentary Report: Final Forensic Assessment" />
+        </div>
+
         {/* Completed Dossier Card */}
         <div className="rounded-2xl bg-white/[0.02] border border-white/10 p-6 sm:p-10 backdrop-blur-xl shadow-2xl mb-8">
           
@@ -237,7 +287,9 @@ export default function Investigation() {
           </div>
 
           {/* Performance Metrics Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          <div className={`grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 transition-all duration-300 ${
+            isNarrating && activeTarget === 'report-metrics' ? 'p-1.5 rounded-2xl bg-purple-500/20' : ''
+          }`}>
             <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5">
               <span className="text-slate-500 text-[10px] font-mono uppercase block mb-1">Clues Discovered</span>
               <span className="text-xl font-bold font-mono text-emerald-400">{foundCluesCount} of {totalClues}</span>
@@ -342,10 +394,10 @@ export default function Investigation() {
 
   // Active Stage Investigation View
   return (
-    <div className="min-h-screen pt-28 pb-24 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto">
+    <div className="min-h-screen pt-28 pb-24 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto relative">
       
       {/* Investigation Top Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 mb-8 border-b border-white/10">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 mb-6 border-b border-white/10">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border font-bold ${badge.classes}`}>
@@ -378,6 +430,13 @@ export default function Investigation() {
             <RotateCcw className="w-4 h-4" />
           </button>
         </div>
+      </div>
+
+      {/* Voice Player Docked at Top of Investigation Stage */}
+      <div className="mb-6">
+        <VoicePlayer 
+          title={`Documentary Narration: Stage ${currentStageIdx + 1} (${currentStage.timestamp})`} 
+        />
       </div>
 
       {/* Sequential Timeline Stepper Bar */}
@@ -418,8 +477,12 @@ export default function Investigation() {
         })}
       </div>
 
-      {/* STAGE 1: INCIDENT BRIEF & CONTEXT */}
-      <div className="rounded-2xl bg-white/[0.02] border border-white/10 p-6 sm:p-8 backdrop-blur-xl mb-8">
+      {/* STAGE 1: INCIDENT BRIEF & CONTEXT WITH LIVE AUDIO HIGHLIGHTS */}
+      <div className={`rounded-2xl bg-white/[0.02] border p-6 sm:p-8 backdrop-blur-xl mb-8 transition-all duration-300 ${
+        isNarrating && (activeTarget === 'timestamp-header' || activeTarget === 'incident-context')
+          ? 'border-purple-500/80 shadow-2xl shadow-purple-950/40 bg-purple-950/10'
+          : 'border-white/10'
+      }`}>
         
         <div className="flex items-center justify-between pb-3 mb-4 border-b border-white/10">
           <div className="flex items-center gap-2">
@@ -429,29 +492,61 @@ export default function Investigation() {
             <span className="text-xs text-amber-400 font-mono">{currentStage.systemStatus}</span>
           </div>
 
-          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.04] text-slate-400">
-            Current Knowledge Horizon
-          </span>
+          <div className="flex items-center gap-2">
+            {isNarrating && activeTarget === 'incident-context' && (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 animate-pulse">
+                ● Narrator Reading Context
+              </span>
+            )}
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/[0.04] text-slate-400">
+              Current Knowledge Horizon
+            </span>
+          </div>
         </div>
 
-        <p className="text-sm text-slate-200 leading-relaxed font-light mb-4">
+        <p className={`text-sm leading-relaxed font-light mb-4 transition-colors duration-300 ${
+          isNarrating && activeTarget === 'incident-context' ? 'text-white font-normal' : 'text-slate-200'
+        }`}>
           {currentStage.context}
         </p>
 
-        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200 leading-relaxed font-mono">
-          <strong className="block text-amber-400 mb-1">OPERATIONAL DILEMMA:</strong>
+        {/* Operational Dilemma with Audio Highlight */}
+        <div className={`p-4 rounded-xl border text-xs leading-relaxed font-mono transition-all duration-300 ${
+          isNarrating && activeTarget === 'operational-dilemma'
+            ? 'bg-amber-500/25 border-amber-400 text-white shadow-lg shadow-amber-500/20'
+            : 'bg-amber-500/10 border-amber-500/20 text-amber-200'
+        }`}>
+          <div className="flex items-center justify-between mb-1">
+            <strong className="block text-amber-400">OPERATIONAL DILEMMA:</strong>
+            {isNarrating && activeTarget === 'operational-dilemma' && (
+              <span className="text-[10px] px-2 py-0.2 rounded bg-amber-400/20 text-amber-200 animate-pulse">
+                ● Narrator Explaining Dilemma
+              </span>
+            )}
+          </div>
           {currentStage.dilemma}
         </div>
       </div>
 
-      {/* STAGE 2: EVIDENCE ROOM & CLUE DISCOVERY */}
-      <div className="rounded-2xl bg-white/[0.02] border border-white/10 p-6 sm:p-8 backdrop-blur-xl mb-8">
+      {/* STAGE 2: EVIDENCE ROOM & CLUE DISCOVERY WITH AUDIO HIGHLIGHTS */}
+      <div className={`rounded-2xl bg-white/[0.02] border p-6 sm:p-8 backdrop-blur-xl mb-8 transition-all duration-300 ${
+        isNarrating && activeTarget === 'evidence-room'
+          ? 'border-purple-500/80 shadow-2xl shadow-purple-950/40 bg-purple-950/10'
+          : 'border-white/10'
+      }`}>
         
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="font-serif text-lg font-bold text-white">
-              The Evidence Room
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="font-serif text-lg font-bold text-white">
+                The Evidence Room
+              </h2>
+              {isNarrating && activeTarget === 'evidence-room' && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 animate-pulse">
+                  ● Narrator Explaining Signals
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-400 font-mono mt-0.5">
               Inspect current telemetry, gauges, and audio intercepts to discover hidden clues.
             </p>
@@ -498,24 +593,85 @@ export default function Investigation() {
 
         {/* Evidence Inspection Modal / Detailed Overlay */}
         {inspectingEvidence && (
-          <div className="mt-6 p-4 rounded-xl bg-mneme-900 border border-mneme-accent/40 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
-              <span className="text-xs font-mono font-bold text-mneme-lavender">
-                {inspectingEvidence.category} Telemetry File
-              </span>
+          <div className="mt-6 p-5 rounded-xl bg-mneme-900 border border-mneme-accent/40 animate-in fade-in duration-200 shadow-xl shadow-black/50">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-mneme-accent animate-ping" />
+                <span className="text-xs font-mono font-bold text-mneme-lavender uppercase tracking-wider">
+                  {inspectingEvidence.category} Telemetry File • {inspectingEvidence.type.toUpperCase()}
+                </span>
+              </div>
               <button 
                 onClick={() => setInspectingEvidence(null)}
-                className="text-xs text-slate-400 hover:text-white font-mono"
+                className="text-xs text-slate-400 hover:text-white font-mono px-2 py-0.5 rounded bg-white/[0.04] border border-white/10 transition-colors"
               >
                 Close [✕]
               </button>
             </div>
-            <h3 className="font-serif text-sm font-bold text-white mb-1">{inspectingEvidence.title}</h3>
-            <div className="p-2.5 rounded bg-black/50 border border-white/5 font-mono text-xs text-amber-300 mb-2">
+            
+            <h3 className="font-serif text-base font-bold text-white mb-2">{inspectingEvidence.title}</h3>
+            
+            {/* Visual Telemetry Sparkline if Sensor / Gauge */}
+            {(inspectingEvidence.type === 'sensor' || inspectingEvidence.type === 'gauge') && (
+              <div className="p-3 rounded-lg bg-black/60 border border-white/10 font-mono text-xs mb-3">
+                <div className="flex items-center justify-between text-[10px] text-slate-400 mb-2">
+                  <span>REAL-TIME OSCILLOSCOPE TRACE (200 Hz Sampling)</span>
+                  <span className="text-rose-400 font-bold">ALARM THRESHOLD EXCEEDED</span>
+                </div>
+                {/* SVG Telemetry Oscilloscope */}
+                <svg className="w-full h-16 stroke-amber-400 fill-none" viewBox="0 0 300 60">
+                  <path 
+                    d="M 0 30 Q 15 28, 30 30 T 60 30 T 90 29 T 120 32 T 150 15 T 165 48 T 180 8 T 195 52 T 210 12 T 225 45 T 240 18 T 255 42 T 270 20 T 300 24" 
+                    strokeWidth="2" 
+                    className="stroke-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.6)]" 
+                  />
+                  <line x1="0" y1="20" x2="300" y2="20" stroke="rgba(239,68,68,0.5)" strokeDasharray="4" strokeWidth="1" />
+                </svg>
+                <div className="flex items-center justify-between text-[9px] text-slate-500 mt-1 font-mono">
+                  <span>Baseline: 2.5 mm/s</span>
+                  <span className="text-amber-300 font-bold">Current Peak: {inspectingEvidence.value}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Audio Waveform Player if Audio Evidence */}
+            {inspectingEvidence.type === 'audio' && (
+              <div className="p-3.5 rounded-lg bg-black/60 border border-purple-500/30 font-mono text-xs mb-3 space-y-2">
+                <div className="flex items-center justify-between text-[10px] text-purple-300">
+                  <span>VHF AUDIO INTERCEPT CAPTURE</span>
+                  <span className="text-emerald-400 font-bold">AUTHENTICATED RADIO LOG</span>
+                </div>
+                <div className="flex items-center gap-3 py-1">
+                  <button
+                    onClick={() => gnaniService.speakCaseInvestigation(inspectingEvidence.value)}
+                    className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold text-[11px] flex items-center gap-1.5 shadow-md shadow-purple-600/30 transition-all"
+                  >
+                    <Mic className="w-3.5 h-3.5" />
+                    <span>Play Gnani Timbre Readout</span>
+                  </button>
+                  <div className="flex-1 flex items-center gap-1 h-6">
+                    {[40, 65, 30, 85, 95, 45, 70, 80, 50, 90, 60, 75, 85, 40, 70, 55, 90, 35, 60, 80].map((h, i) => (
+                      <div 
+                        key={i} 
+                        className="flex-1 bg-purple-400/60 rounded-full animate-pulse"
+                        style={{ height: `${h}%`, animationDelay: `${i * 70}ms` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="p-3 rounded-lg bg-black/50 border border-white/5 font-mono text-xs text-amber-300 mb-3">
+              <span className="text-slate-500 text-[10px] block uppercase mb-0.5">Recorded Sensor Value / Transcript:</span>
               {inspectingEvidence.value}
             </div>
-            <div className="text-xs text-slate-300 leading-relaxed font-light">
-              <strong className="text-white font-mono block text-[10px] uppercase mb-0.5">Forensic Significance:</strong>
+
+            <div className="text-xs text-slate-300 leading-relaxed font-light p-3 rounded-lg bg-white/[0.02] border border-white/5">
+              <strong className="text-white font-mono block text-[10px] uppercase mb-1 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-mneme-lavender" />
+                Forensic Significance & Clue Analysis:
+              </strong>
               {inspectingEvidence.significance}
             </div>
           </div>
@@ -524,13 +680,25 @@ export default function Investigation() {
 
       {/* STAGE 4 & 5: DECISION POINT & KNOWLEDGE LOCK COMMITMENT */}
       {!isCurrentStageLocked ? (
-        <div className="rounded-2xl bg-white/[0.02] border border-white/10 p-6 sm:p-8 backdrop-blur-xl mb-8">
+        <div className={`rounded-2xl bg-white/[0.02] border p-6 sm:p-8 backdrop-blur-xl mb-8 transition-all duration-300 ${
+          isNarrating && activeTarget === 'decision-point'
+            ? 'border-purple-500/80 shadow-2xl shadow-purple-950/40 bg-purple-950/10'
+            : 'border-white/10'
+        }`}>
           
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
-            <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold">
-              Decision Point ({currentStage.timestamp})
-            </span>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-400" />
+              <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold">
+                Decision Point ({currentStage.timestamp})
+              </span>
+            </div>
+
+            {isNarrating && activeTarget === 'decision-point' && (
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 animate-pulse">
+                ● Narrator Announcing Options
+              </span>
+            )}
           </div>
 
           <h3 className="font-serif text-lg font-bold text-white mb-2">
@@ -724,6 +892,12 @@ export default function Investigation() {
           </div>
         </div>
       )}
+
+      {/* Interactive Case Intelligence Voice Assistant (Floating Action & Drawer) */}
+      <InvestigationVoiceAssistant 
+        caseItem={caseItem} 
+        currentStage={currentStage} 
+      />
 
     </div>
   );
