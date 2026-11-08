@@ -1,4 +1,5 @@
-import React from 'react';
+﻿import React from 'react';
+import { useLanguage } from '../context/LanguageContext';
 import { Link } from 'react-router-dom';
 import { 
   ShieldCheck, 
@@ -15,6 +16,8 @@ import {
 import { CASES } from '../data/casesData';
 
 export default function Verification() {
+  const { t, getTranslationStatus } = useLanguage();
+  const coverageNote = getTranslationStatus('nav.evidence');
   const verifiedCount = CASES.filter(c => c.status === 'VERIFIED').length;
   const publicCaseStudies = CASES.filter(c => c.status === 'PUBLIC CASE STUDY').length;
   const simulatedDemos = CASES.filter(c => c.status === 'SIMULATED DEMO').length;
@@ -32,6 +35,7 @@ export default function Verification() {
           Evidence & Verification
         </h1>
         <p className="text-xs sm:text-sm text-slate-400 font-light mt-2 max-w-3xl leading-relaxed">
+          {coverageNote.status !== 'translated' && (<span className="inline-block mr-2 text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/25 text-amber-300">English fallback shown for untranslated UI</span>)}
           The foundation of MNEME is uncompromising truth. We distinguish verified historical fact from public case studies and high-fidelity simulations. Here is how evidence is validated, preserved, and guarded against generative hallucination.
         </p>
       </div>
@@ -204,4 +208,6 @@ export default function Verification() {
     </div>
   );
 }
+
+
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   Clock, 
@@ -15,11 +15,15 @@ import {
 } from 'lucide-react';
 import { getCaseById } from '../data/casesData';
 import { storageService } from '../services/storageService';
-import { gnaniService } from '../services/gnaniService';
+import { voiceService } from '../services/voiceService';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function TimeMachine() {
   const { id } = useParams();
   const caseItem = getCaseById(id) || getCaseById('the-silent-failure');
+
+  const { t, getCaseContent } = useLanguage();
+  const localizedCase = getCaseContent(caseItem);
 
   const stages = caseItem.stages || [];
   const [selectedStageIdx, setSelectedStageIdx] = useState(0);
@@ -32,7 +36,7 @@ export default function TimeMachine() {
   const userDecision = userDecisions[selectedStageIdx];
 
   const handleStageSelect = (idx) => {
-    gnaniService.playAudioFeedback('click');
+    voiceService.playAudioFeedback('click');
     setSelectedStageIdx(idx);
   };
 
@@ -43,10 +47,10 @@ export default function TimeMachine() {
       <div className="flex items-center justify-between pb-6 mb-6 border-b border-white/10">
         <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
           <Link to={`/case/${caseItem.id}`} className="hover:text-white transition-colors">
-            {caseItem.title}
+            {localizedCase.title}
           </Link>
           <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-          <span className="text-mneme-lavender font-semibold">Decision Time Machine</span>
+          <span className="text-mneme-lavender font-semibold">{t('common.timeMachine','Decision Time Machine')}</span>
         </div>
 
         <Link
@@ -54,7 +58,7 @@ export default function TimeMachine() {
           className="text-xs font-mono text-slate-400 hover:text-white flex items-center gap-1.5"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Investigation View</span>
+          <span>{t('common.investigationView','Investigation View')}</span>
         </Link>
       </div>
 
@@ -213,4 +217,5 @@ export default function TimeMachine() {
     </div>
   );
 }
+
 

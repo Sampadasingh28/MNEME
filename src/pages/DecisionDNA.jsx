@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Activity, 
@@ -15,11 +15,14 @@ import {
   Award
 } from 'lucide-react';
 import { storageService, INITIAL_DECISION_DNA } from '../services/storageService';
-import { gnaniService } from '../services/gnaniService';
+import { voiceService } from '../services/voiceService';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function DecisionDNA() {
   const [dna, setDna] = useState(null);
   const [user, setUser] = useState(null);
+
+  const { t } = useLanguage();
 
   useEffect(() => {
     const activeDna = storageService.getDecisionDNA();
@@ -214,4 +217,5 @@ export default function DecisionDNA() {
     </div>
   );
 }
+
 

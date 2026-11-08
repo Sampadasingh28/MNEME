@@ -1,8 +1,10 @@
-import React, { useEffect } from 'react';
+﻿import React, { useEffect } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ParticleBackground from './components/ParticleBackground';
+import LanguageOnboarding from './components/LanguageOnboarding';
+import { useLanguage } from './context/LanguageContext';
 
 // Pages
 import Home from './pages/Home';
@@ -28,8 +30,19 @@ function ScrollToTop() {
 }
 
 export default function App() {
+  const { currentInterfaceLang } = useLanguage();
+
+  useEffect(() => {
+    const lang = currentInterfaceLang?.bcp47?.split('-')[0] || 'en';
+    const dir = currentInterfaceLang?.dir || 'ltr';
+    document.documentElement.lang = lang;
+    document.documentElement.dir = dir;
+    document.body.dir = dir;
+  }, [currentInterfaceLang]);
+
   return (
     <div className="relative min-h-screen bg-mneme-950 text-slate-100 flex flex-col font-sans selection:bg-mneme-accent/30 selection:text-white">
+      <LanguageOnboarding />
       {/* Dynamic ambient particles */}
       <ParticleBackground />
 
@@ -63,4 +76,3 @@ export default function App() {
     </div>
   );
 }
-

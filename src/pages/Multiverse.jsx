@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   GitBranch, 
@@ -14,11 +14,15 @@ import {
   TrendingDown
 } from 'lucide-react';
 import { getCaseById } from '../data/casesData';
-import { gnaniService } from '../services/gnaniService';
+import { voiceService } from '../services/voiceService';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function Multiverse() {
   const { id } = useParams();
   const caseItem = getCaseById(id) || getCaseById('the-silent-failure');
+
+  const { t, getCaseContent } = useLanguage();
+  const localizedCase = getCaseContent(caseItem);
 
   const branches = caseItem.multiverseBranches || [];
   const [selectedBranchId, setSelectedBranchId] = useState(branches[0]?.id || 'branch-1');
@@ -26,7 +30,7 @@ export default function Multiverse() {
   const activeBranch = branches.find(b => b.id === selectedBranchId) || branches[0];
 
   const handleSelectBranch = (branchId) => {
-    gnaniService.playAudioFeedback('click');
+    voiceService.playAudioFeedback('click');
     setSelectedBranchId(branchId);
   };
 
@@ -37,7 +41,7 @@ export default function Multiverse() {
       <div className="flex items-center justify-between pb-6 mb-6 border-b border-white/10">
         <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
           <Link to={`/case/${caseItem.id}`} className="hover:text-white transition-colors">
-            {caseItem.title}
+            {localizedCase.title}
           </Link>
           <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
           <span className="text-mneme-lavender font-semibold">Multiverse Lab</span>
@@ -48,7 +52,7 @@ export default function Multiverse() {
           className="text-xs font-mono text-slate-400 hover:text-white flex items-center gap-1.5"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Return to Investigation</span>
+          <span>{t('common.returnToInvestigation','Return to Investigation')}</span>
         </Link>
       </div>
 
@@ -188,4 +192,5 @@ export default function Multiverse() {
     </div>
   );
 }
+
 

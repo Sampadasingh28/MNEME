@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+﻿import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
   Search, 
@@ -15,11 +15,14 @@ import {
 import { UNIVERSES } from '../data/universesData';
 import { CASES } from '../data/casesData';
 import CaseCard from '../components/CaseCard';
-import { gnaniService } from '../services/gnaniService';
+import { voiceService } from '../services/voiceService';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function Universe() {
   const [searchParams, setSearchParams] = useSearchParams();
   const domainQuery = searchParams.get('domain') || 'all';
+
+  const { t, getCaseContent } = useLanguage();
 
   const [search, setSearch] = useState('');
   const [selectedUniverse, setSelectedUniverse] = useState(domainQuery);
@@ -34,7 +37,7 @@ export default function Universe() {
   }, [domainQuery]);
 
   const handleUniverseChange = (id) => {
-    gnaniService.playAudioFeedback('click');
+    voiceService.playAudioFeedback('click');
     setSelectedUniverse(id);
     if (id === 'all') {
       searchParams.delete('domain');
@@ -45,7 +48,7 @@ export default function Universe() {
   };
 
   const handleResetFilters = () => {
-    gnaniService.playAudioFeedback('click');
+    voiceService.playAudioFeedback('click');
     setSearch('');
     setSelectedUniverse('all');
     setSelectedDifficulty('all');
@@ -72,11 +75,12 @@ export default function Universe() {
       // Search query
       if (search.trim()) {
         const query = search.toLowerCase();
-        const matchTitle = c.title.toLowerCase().includes(query);
-        const matchSub = (c.subtitle || '').toLowerCase().includes(query);
-        const matchSum = c.summary.toLowerCase().includes(query);
-        const matchDomain = c.domain.toLowerCase().includes(query);
-        const matchLoc = (c.location || '').toLowerCase().includes(query);
+        const lc = getCaseContent(c);
+        const matchTitle = (lc.title || '').toLowerCase().includes(query);
+        const matchSub = (lc.subtitle || '').toLowerCase().includes(query);
+        const matchSum = (lc.summary || '').toLowerCase().includes(query);
+        const matchDomain = (lc.domain || '').toLowerCase().includes(query);
+        const matchLoc = (lc.location || '').toLowerCase().includes(query);
         if (!matchTitle && !matchSub && !matchSum && !matchDomain && !matchLoc) {
           return false;
         }
@@ -160,7 +164,7 @@ export default function Universe() {
           <select
             value={selectedDifficulty}
             onChange={(e) => {
-              gnaniService.playAudioFeedback('click');
+              voiceService.playAudioFeedback('click');
               setSelectedDifficulty(e.target.value);
             }}
             className="px-3 py-2.5 rounded-xl bg-mneme-900 border border-white/10 text-xs text-slate-300 focus:outline-none focus:border-mneme-accent"
@@ -177,7 +181,7 @@ export default function Universe() {
           <select
             value={selectedStatus}
             onChange={(e) => {
-              gnaniService.playAudioFeedback('click');
+              voiceService.playAudioFeedback('click');
               setSelectedStatus(e.target.value);
             }}
             className="px-3 py-2.5 rounded-xl bg-mneme-900 border border-white/10 text-xs text-slate-300 focus:outline-none focus:border-mneme-accent"
@@ -194,7 +198,7 @@ export default function Universe() {
           <select
             value={sortBy}
             onChange={(e) => {
-              gnaniService.playAudioFeedback('click');
+              voiceService.playAudioFeedback('click');
               setSortBy(e.target.value);
             }}
             className="px-3 py-2.5 rounded-xl bg-mneme-900 border border-white/10 text-xs text-slate-300 focus:outline-none focus:border-mneme-accent"
@@ -211,7 +215,7 @@ export default function Universe() {
               className="px-3.5 py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs text-rose-300 hover:text-white flex items-center justify-center gap-1.5 transition-colors font-mono"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset</span>
+              <span>{t('common.reset','Reset')}</span>
             </button>
           )}
 
@@ -283,4 +287,5 @@ export default function Universe() {
     </div>
   );
 }
+
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 import { 
@@ -22,7 +22,8 @@ import {
   Headphones
 } from 'lucide-react';
 import { getCaseById, getStatusBadge } from '../data/casesData';
-import { gnaniService } from '../services/gnaniService';
+import { voiceService } from '../services/voiceService';
+import { useLanguage } from '../context/LanguageContext';
 import { storageService } from '../services/storageService';
 import { documentaryNarrator } from '../services/documentaryNarrator';
 import VoicePlayer from '../components/VoicePlayer';
@@ -32,6 +33,9 @@ export default function Investigation() {
   const { id } = useParams();
   const navigate = useNavigate();
   const caseItem = getCaseById(id) || getCaseById('the-silent-failure');
+
+  const { t, interfaceLanguage, narrationLanguage, getCaseContent } = useLanguage();
+  const localizedCase = getCaseContent(caseItem);
 
   // Stages count
   const stages = caseItem.stages || [];
@@ -91,7 +95,7 @@ export default function Investigation() {
   // NEVER include future locked stages.
   useEffect(() => {
     if (!isCompleted && currentStage) {
-      const script = documentaryNarrator.generateStageScript(currentStage, currentStageIdx + 1, totalStages);
+      const script = documentaryNarrator.generateStageScript(currentStage, currentStageIdx + 1, totalStages, narrationLanguage);
       documentaryNarrator.loadScript(script);
     }
   }, [currentStageIdx, isCompleted, caseItem.id]);
@@ -106,20 +110,20 @@ export default function Investigation() {
       const totalClues = stages.reduce((acc, st) => acc + (st.evidenceList?.filter(e => e.isClue).length || 0), 0);
       const foundCluesCount = Object.keys(discoveredClues).length;
       const alignmentPct = Math.round((expertMatches / totalStages) * 100) || 75;
-      const reportScript = documentaryNarrator.generateLearningReportScript(caseItem, alignmentPct, foundCluesCount, totalClues);
+      const reportScript = documentaryNarrator.generateLearningReportScript(localizedCase, alignmentPct, foundCluesCount, totalClues, narrationLanguage);
       documentaryNarrator.loadScript(reportScript);
     }
   }, [isCompleted]);
 
   // Inspect evidence item & mark clue as discovered
   const handleInspectEvidence = (evidence) => {
-    gnaniService.playAudioFeedback('alert');
+    voiceService.playAudioFeedback('alert');
     setInspectingEvidence(evidence);
 
     if (evidence.isClue && !discoveredClues[evidence.id]) {
       const updated = { ...discoveredClues, [evidence.id]: true };
       setDiscoveredClues(updated);
-      gnaniService.playAudioFeedback('success');
+      voiceService.playAudioFeedback('success');
       // Save progress
       storageService.saveInvestigationProgress(caseItem.id, {
         currentStageIdx,
@@ -136,7 +140,7 @@ export default function Investigation() {
     if (!draftOption) return;
 
     documentaryNarrator.stop();
-    gnaniService.playAudioFeedback('lock');
+    voiceService.playAudioFeedback('lock');
 
     const stageDecision = {
       stageNumber: currentStage.stageNumber,
@@ -171,7 +175,7 @@ export default function Investigation() {
   // Advance to next unlocked stage or finish
   const handleNextStage = () => {
     documentaryNarrator.stop();
-    gnaniService.playAudioFeedback('click');
+    voiceService.playAudioFeedback('click');
 
     if (currentStageIdx + 1 < totalStages) {
       const nextIdx = currentStageIdx + 1;
@@ -226,7 +230,7 @@ export default function Investigation() {
   // Reset / Restart investigation
   const handleRestart = () => {
     documentaryNarrator.stop();
-    gnaniService.playAudioFeedback('click');
+    voiceService.playAudioFeedback('click');
     if (window.confirm('Reset this investigation? Your locked decisions for this session will be cleared.')) {
       setCurrentStageIdx(0);
       setDiscoveredClues({});
@@ -274,7 +278,7 @@ export default function Investigation() {
                 Forensic Learning Report
               </h1>
               <p className="text-xs font-mono text-slate-400 mt-1">
-                Case: {caseItem.title} • {caseItem.domain}
+                Case: {localizedCase.title} • {localizedCase.domain}
               </p>
             </div>
 
@@ -404,11 +408,11 @@ export default function Investigation() {
               {badge.label}
             </span>
             <span className="text-xs font-mono text-slate-400">
-              {caseItem.domain}
+              {localizedCase.domain}
             </span>
           </div>
           <h1 className="font-serif text-2xl sm:text-3xl font-extrabold text-white">
-            {caseItem.title}
+            {localizedCase.title}
           </h1>
         </div>
 
@@ -643,7 +647,7 @@ export default function Investigation() {
                 </div>
                 <div className="flex items-center gap-3 py-1">
                   <button
-                    onClick={() => gnaniService.speakCaseInvestigation(inspectingEvidence.value)}
+                    onClick={() => voiceService.speakCaseInvestigation(inspectingEvidence.value)}
                     className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold text-[11px] flex items-center gap-1.5 shadow-md shadow-purple-600/30 transition-all"
                   >
                     <Mic className="w-3.5 h-3.5" />
@@ -718,7 +722,7 @@ export default function Investigation() {
                 <div
                   key={opt.id}
                   onClick={() => {
-                    gnaniService.playAudioFeedback('click');
+                    voiceService.playAudioFeedback('click');
                     setDraftOption(opt);
                   }}
                   className={`p-4 rounded-xl border cursor-pointer transition-all ${
@@ -902,3 +906,4 @@ export default function Investigation() {
     </div>
   );
 }
+
